@@ -2,13 +2,14 @@
 <html>
 
 <head>
-    <script src="../dist_new/face-api.js"></script>
+    <script src="../dist/face-api.js"></script>
     <script src="public/commons.js"></script>
     <link rel="stylesheet" href="public/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.css">
     <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.0/dist/tf.min.js"></script>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
 
 <!--    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.13.3/dist/tf.min.js"> </script>-->
 </head>
@@ -26,6 +27,9 @@
             <video onplay="onPlay(this)" id="inputVideo" autoplay muted></video>
             <canvas id="overlay" />
             <canvas id='canvas' />
+        </div>
+        <div id="activations">
+
         </div>
         <h5>Increase Input Size to get higher accuracy</h5>
         <center style="padding:10px">
@@ -100,6 +104,10 @@
             }
         };
         var EmotionModel;
+        var AuxModel;
+        var a_w = 800
+        var a_h = 30;
+        var circles;
         var offset_x = 27;
         var offset_y = 20;
         var emotion_labels = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"];
@@ -176,7 +184,10 @@
                     let cT = ctx.getImageData(s_x, s_y, s_w, s_h);
                     cT = preprocess(cT);
 
-                    z = EmotionModel.predict(cT)
+                    const [z, emb] = AuxModel.predict(cT);
+                    let embData = emb.dataSync();
+                    plot(embData);
+
                     let index = z.argMax(1).dataSync()[0]
                     let label = emotion_labels[index];
                     ctx.strokeStyle = emotion_colors[index];
@@ -214,6 +225,9 @@
             //            let canvas = document.getElementById("combined");
             //            let cT = preprocess(cImg)
             EmotionModel = await createModel(path)
+            let embeddingLayer = EmotionModel.layers[EmotionModel.layers.length-2].output;
+            let input = EmotionModel.input;
+            AuxModel = tf.model({inputs: input, outputs: [EmotionModel.output, embeddingLayer]});
             //            z = model.predict(cT)
             //            toPixels(deprocess(z), canvas)
             //            lbl.innerText = "Model Loaded !"
@@ -262,7 +276,28 @@
             $('#loader').hide()
         }
 
+        var wScale = d3.scaleLinear()
+                .domain([0, 1])
+                .range([30, 770]);
+
+        var svg = d3.select("#activations").append("svg")
+            .attr("width", a_w)
+            .attr("height", a_h);
+        circles = svg.selectAll("circle");
+
+        function plot(data) {
+            svg.selectAll("*").remove();
+            circles.data(data).join("circle")
+            .attr("cx",function(d,i, arr){
+                const x = wScale(i / (arr.length-1));
+                return x;
+            })
+            .attr("cy",a_h/2)
+            .attr("r",function(d,i){return d});
+        }
+
         $(document).ready(function() {
+            plot([4, 4, 4]);
             loadModel('../models/mobilenetv1_models/model.json')
 
             const sizeTypeSelect = $('#sizeType')
